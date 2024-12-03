@@ -1,0 +1,6 @@
+kafka
+numpy
+opencv_python
+pybind11
+pyds
+setuptools
