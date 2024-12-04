@@ -4,8 +4,9 @@
 *.pyd
 __pycache__/
 
+*.onnx
+*.engine
 # Folder
-models/
 videos/
 
 # Distribution / packaging
