@@ -10,14 +10,16 @@ import cv2
 import numpy as np
 import uuid
 import landmarkcus
-from utils.utility import get_day, get_time, distance, find_center_of_quadrilateral, is_image_blurry1, distance_eye
+from utils.utility import get_day, get_time, is_image_blurry1, calculate_straight_score, face_align
+
 from Kafka.producer import send_image
 
 padding_ratio_x = 1
 padding_ratio_y = 0.5
 face_threshold = 0.75
 distance_eye_threshold = 6
-straight_threshold = 13
+straight_threshold = [-0.003, 0.07]
+
 blurry_threshold = 300
 size_image_threshold = 170
 
@@ -29,7 +31,7 @@ CONFIG_INFER = '/home/jetsonvy/DucChinh/config_infer_primary_face.txt'
 STREAMMUX_WIDTH = 1920
 STREAMMUX_HEIGHT = 1080
 GPU_ID = 0
-DISPLAY_ON = True
+DISPLAY_ON = False
 SOURCE_LIST = {
     # 0: 'file:////home/jetsonvy/DucChinh/videos/People_Walking1.mp4',
     1: 'file:////home/jetsonvy/DucChinh/videos/track.mp4',
@@ -253,6 +255,20 @@ def set_custom_bbox(obj_meta):
     obj_meta.text_params.text_bg_clr.blue = 1.0
     obj_meta.text_params.text_bg_clr.alpha = 1.0
 
+def normal_landmark(landmarks, landmark_size):
+    gain = min(landmark_size[0] / STREAMMUX_WIDTH,
+            landmark_size[1] / STREAMMUX_HEIGHT)
+    pad_x = (landmark_size[0] - STREAMMUX_WIDTH * gain) / 2.0
+    pad_y = (landmark_size[1] - STREAMMUX_HEIGHT * gain) / 2.0
+
+    normal_landmark_list = []
+    for idx, (x, y) in enumerate(landmarks):
+        x = int((x - pad_x) / gain) 
+        y = int((y - pad_y) / gain)
+        normal_landmark_list.append((x,y))
+    
+    return normal_landmark_list
+
 def gie_probe(pad, info, user_data):
     global tracker_id
 
@@ -316,7 +332,6 @@ def gie_probe(pad, info, user_data):
                 continue
 
             if tracking_id in tracker_id and tracking_id is not None:
-                # print(f'Id: {tracking_id} đã ồn tại')
                 l_obj = l_obj.next
                 continue
 
@@ -328,16 +343,9 @@ def gie_probe(pad, info, user_data):
             landmark = landmarkcus.get_landmarks(obj_meta)[:-1]
             masksize = landmarkcus.get_landmarks(obj_meta)[-1]
 
-            center = find_center_of_quadrilateral(landmark[0], landmark[3], landmark[4], landmark[1])
-            current_straight = distance(center, landmark[2])
-            if current_straight > straight_threshold:
-                # print(f'Mặt không thẳng: {current_straight} > {straight_threshold}')
-                l_obj = l_obj.next
-                continue
-
-            current_distance_eye = distance_eye(landmark)
-            if current_distance_eye < distance_eye_threshold:
-                # print('Mặt ngang quá', current_distance_eye)
+            straight_score = float(calculate_straight_score(normal_landmark(landmark, masksize), (width, height)))
+            if straight_score < straight_threshold[0] or straight_score > straight_threshold[1]:
+                # print('Mặt ngang quá', straight_score)
                 l_obj = l_obj.next
                 continue
             
@@ -355,7 +363,9 @@ def gie_probe(pad, info, user_data):
                 l_obj = l_obj.next
                 continue
             
-            var_blurry = is_image_blurry1(img_face)
+            img_align = face_align(frame, np.array(normal_landmark(landmark, masksize), dtype=np.float32))
+            var_blurry = is_image_blurry1(img_align)
+            
             if var_blurry < blurry_threshold:
                 # print(f'Ảnh quá mờ: {var_blurry} < {blurry_threshold}')
                 l_obj = l_obj.next
@@ -369,7 +379,7 @@ def gie_probe(pad, info, user_data):
             send_image(img_face, current_index, "entry")
 
             tracker_id.add(tracking_id)
-            print(f'Tên: {tracking_id}, Score: {confidence}, Time: {current_time}, Straight: {current_straight}, Blurry: {var_blurry}')
+            print(f'Tên: {tracking_id}, Score: {confidence}, Time: {current_time}, Straight: {straight_score}, Blurry: {var_blurry}')
 
             try:
                 l_obj = l_obj.next
