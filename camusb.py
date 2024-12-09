@@ -17,9 +17,8 @@ padding_ratio_x = 1
 padding_ratio_y = 0.5
 face_threshold = 0.75
 distance_eye_threshold = 6
-# straight_threshold = 13
-straight_threshold = [-0.002, 0.06]
-blurry_threshold = 1000
+straight_threshold = [-0.003, 0.07]
+blurry_threshold = 1110
 size_image_threshold = 170
 
 tracker_id = set()
@@ -30,6 +29,7 @@ CONFIG_INFER = '/home/jetsonvy/DucChinh/config_infer_primary_face.txt'
 STREAMMUX_WIDTH = 1920
 STREAMMUX_HEIGHT = 1080
 DISPLAY_ON = True
+DISPLAY_ON_BBOX = False
 
 def normal_landmark(landmarks, landmark_size):
     gain = min(landmark_size[0] / STREAMMUX_WIDTH,
@@ -136,7 +136,7 @@ def osd_sink_pad_buffer_probe(pad,info,u_data):
             l_frame = l_frame.next
             break
 
-        frame_print = [100]
+        frame_print = []
 
         while l_obj is not None:
             try:
@@ -163,7 +163,7 @@ def osd_sink_pad_buffer_probe(pad,info,u_data):
             except StopIteration:
                 break
 
-            if DISPLAY_ON:
+            if DISPLAY_ON_BBOX:
                 parse_face_from_meta(frame_meta, obj_meta)
                 set_custom_bbox(obj_meta)
 
@@ -300,8 +300,10 @@ def main(args):
     tracker = make_elm_or_print_err("nvtracker", "nvtracker")
 
     if DISPLAY_ON:
-        # sink = make_elm_or_print_err("nveglglessink", "nvvideo-renderer")
-        sink = make_elm_or_print_err("fakesink", "fakesink")
+        if DISPLAY_ON_BBOX:
+            sink = make_elm_or_print_err("nveglglessink", "nvvideo-renderer")
+        else:
+            sink = make_elm_or_print_err("fakesink", "fakesink")
         nvosd = make_elm_or_print_err("nvdsosd", "nvdsosd")
         if is_aarch64():
             transform = make_elm_or_print_err("nvegltransform", "nvegl-transform")
