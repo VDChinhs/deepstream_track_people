@@ -104,6 +104,20 @@ def set_custom_bbox(obj_meta, text_display):
     obj_meta.text_params.text_bg_clr.blue = 1.0
     obj_meta.text_params.text_bg_clr.alpha = 1.0
 
+def set_fps_display(fps_meta,frame_meta, fps_value):
+    display_meta=pyds.nvds_acquire_display_meta_from_pool(fps_meta)
+    display_meta.num_labels = 1
+    py_nvosd_text_params = display_meta.text_params[0]
+    py_nvosd_text_params.display_text = fps_value
+    py_nvosd_text_params.x_offset = 10
+    py_nvosd_text_params.y_offset = 10
+    py_nvosd_text_params.font_params.font_name = "Ubuntu"
+    py_nvosd_text_params.font_params.font_size = 10
+    py_nvosd_text_params.font_params.font_color.set(1.0, 1.0, 1.0, 1.0)
+    py_nvosd_text_params.set_bg_clr = 1
+    py_nvosd_text_params.text_bg_clr.set(0.0, 0.0, 0.0, 1.0)
+    pyds.nvds_add_display_meta_to_frame(frame_meta, display_meta)
+
 def osd_sink_pad_buffer_probe(pad,info,u_data):
     global tracker_id
 
@@ -126,7 +140,8 @@ def osd_sink_pad_buffer_probe(pad,info,u_data):
         n_frame = pyds.get_nvds_buf_surface(hash(gst_buffer), frame_meta.batch_id)
         frame = cv2.cvtColor(n_frame, cv2.COLOR_RGBA2BGRA)
 
-        print(f"Video {current_index} Frame number: {frame_number}")
+        fps = f"FPS: {fps_streams['stream{0}'.format(current_index)].fps_current():.2f}"
+        print(f"Video {current_index} Frame number: {frame_number} FPS: {fps}")
         list_detection = []
 
         l_obj=frame_meta.obj_meta_list
@@ -174,18 +189,21 @@ def osd_sink_pad_buffer_probe(pad,info,u_data):
             masksize = landmarkcus.get_landmarks(obj_meta)[-1]
             
             x1,y1,x2,y2 = left, top, left + width, top + height
-        
+
             img_align = face_align(frame, np.array(normal_landmark(landmark, masksize), dtype=np.float32))
             var_blurry = is_image_blurry1(img_align)
             straight_score = calculate_straight_score(normal_landmark(landmark, masksize), (width, height))
             
+            #-0,002 đến 0.06
             text_display = f"ID: {tracking_id}\n" \
                    f"Conf: {confidence:.2f}\n" \
                    f"Blurry: {var_blurry:.3f}\n"\
-                   f"Straight: {straight_score:.4f}\n" #-0,002 đến 0.06
-            
+                   f"Straight: {straight_score:.4f}"
+
             parse_face_from_meta(frame_meta, obj_meta)
             set_custom_bbox(obj_meta, text_display)
+
+            # print(f'Tên: {tracking_id}, Score: {confidence}, Time: {current_time}, Straight: {current_straight}, Blurry: {var_blurry}')
 
             try: 
                 l_obj=l_obj.next
@@ -214,6 +232,8 @@ def osd_sink_pad_buffer_probe(pad,info,u_data):
 
             cv2.imwrite(f'/home/jetsonvy/DucChinh/frame{frame_number}.jpg', frame)
 
+        
+        set_fps_display(batch_meta,frame_meta, fps)
         fps_streams['stream{0}'.format(current_index)].get_fps()
         try:
             l_frame=l_frame.next
